@@ -163,7 +163,7 @@ class scd2:
         stagedUpdates.alias("updates"),
         "concat("+",".join(["lookup."+col for col in lookup_Columns])+")= mergeKey") \
         .whenMatchedUpdate(
-            condition = "lookup.current == true AND "+" OR ".join(["updates."+col+"=="+ "lookup."+col for col in maskedcolumn]),
+            condition = "lookup.current == true AND "+" OR ".join(["updates."+col+"<>"+ "lookup."+col for col in maskedcolumn]),
             set = {                                      
                 "updateDate": current_date()
             }
@@ -178,14 +178,14 @@ class scd2:
 
 if __name__=='__main__':
 
-    # app_config = sys.argv[1]
-    # dataset = sys.argv[2]
-    # data_path = sys.argv[3]
-    # spark_config = sys.argv[4]
-    app_config = "s3://abileshlandingzone/conf/app_conf.json"
-    dataset = "Actives"
-    data_path = "2020/Feb/1/final_active_dataset.parquet"
-    spark_config = "s3://abileshlandingzone/conf/spark_conf.json"
+    app_config = sys.argv[1]
+    dataset = sys.argv[2]
+    data_path = sys.argv[3]
+    spark_config = sys.argv[4]
+    # app_config = "s3://abileshlandingzone/conf/app_conf.json"
+    # dataset = "Actives"
+    # data_path = "2020/Feb/1/final_active_dataset.parquet"
+    # spark_config = "s3://abileshlandingzone/conf/spark_conf.json"
     jsonData = fetchConfig(app_config)
     object1 = sparkcode(dataset)
     object2 = transform()
