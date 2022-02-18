@@ -334,4 +334,4 @@ with DAG(
         aws_conn_id='aws_default',
     )
 
-    read_AppConfig >> LandingToRaw >> pre_validation >> create_emr_cluster >> t1 >> create_livy_conn >> RawToStaging >> post_validation >> cluster_remover
+    read_AppConfig  >> create_emr_cluster >> t1 >> create_livy_conn >> LandingToRaw >> pre_validation >> RawToStaging >> post_validation >> cluster_remover
