@@ -266,11 +266,23 @@ with DAG(
     python_callable= get_AppConfig,
     )
 
-    LandingToRaw = PythonOperator(
-    task_id='LandingToRaw',
-    python_callable= CopyFromLandingToRaw,
-    )
+    # LandingToRaw = PythonOperator(
+    # task_id='LandingToRaw',
+    # python_callable= CopyFromLandingToRaw,
+    # )
 
+    LandingToRaw = LivyOperator(
+    task_id='LandingToRaw',
+    file='{{ dag_run.conf.get("LandingToRaw") }}',
+    class_name='com.example.SparkApp',
+        args=[
+        '{{ dag_run.conf.get("app_config") }}',
+        '{{ dag_run.conf.get("dataset") }}',
+        '{{ dag_run.conf.get("data_path") }}',
+        '{{ dag_run.conf.get("spark_config") }}',
+        ],
+    livy_conn_id ='livy_default',
+    )
 # Create an EMR cluster
     create_emr_cluster = EmrCreateJobFlowOperator(
         
@@ -299,7 +311,7 @@ with DAG(
 
     RawToStaging = LivyOperator(
     task_id='RawToStaging',
-    file='{{ dag_run.conf.get("spark_job") }}',
+    file='{{ dag_run.conf.get("RawToStaging") }}',
     class_name='com.example.SparkApp',
         args=[
         '{{ dag_run.conf.get("app_config") }}',
