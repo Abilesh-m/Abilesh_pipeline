@@ -129,7 +129,7 @@ def pre_validation_method(**kwargs):
         s3 = boto3.resource('s3')
         content_object = s3.Object(bucket,key)
         file_content = content_object.get()['Body'].read().decode('utf-8')
-        jsonData=json.loads(file_content)
+        jsonData=json.dumps(file_content)
 
         fs = s3fs.S3FileSystem()
         df_landingzone =pq.ParquetDataset(jsonData['ingest-'+dataset]['source']['data-location']+'/'+data_path, filesystem=fs).read_pandas().to_pandas()
