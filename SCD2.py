@@ -41,16 +41,16 @@ class sparkcode:
     def read(self,source_loc,data_path,source_format):
         try:
             if(source_format == 'parquet'):
-                df = sc.read.parquet(source_loc + "/" + data_path)
+                df = sc.read.parquet(source_loc + "/" + data_path +'/')
                 return df
             if(source_format == 'csv'):
-                df = sc.read.csv(source_loc + "/" + data_path)
+                df = sc.read.csv(source_loc + "/" + data_path  +'/' )
                 return df
         except Exception as e:
             return e
    
 #function to write the data to the destination
-    def write_with_partition(self,df,destination_loc,destination_format,data_path):
+    def write(self,df,destination_loc,destination_format,data_path):
         try:
             if(destination_format == 'parquet'):
                 df.write.parquet(destination_loc+'/'+data_path)
@@ -197,6 +197,6 @@ if __name__=='__main__':
     df = object3.readtransformed(df,object1.lookup_location,object1.lookup_cols)
     for i in object1.lookup_cols:
         df = df.drop(i).withColumnRenamed("masked_"+i, i)
-    object1.write_with_partition(df,object1.mask_destination_loc,object1.mask_destination_format,data_path)     
+    object1.write(df,object1.mask_destination_loc,object1.mask_destination_format,data_path)     
 
 sc.stop()

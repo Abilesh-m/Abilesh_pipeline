@@ -1,6 +1,5 @@
 from airflow import settings
 from airflow import DAG
-
 from airflow.operators.python import PythonOperator
 from airflow.providers.apache.livy.operators.livy import LivyOperator
 from airflow.providers.amazon.aws.sensors.emr import EmrJobFlowSensor
@@ -17,7 +16,9 @@ from airflow.utils.decorators import apply_defaults
 
 from datetime import datetime,timedelta
 import decimal
+import requests
 import json
+import time
 import boto3
 import s3fs
 import pyarrow.parquet as pq
@@ -131,6 +132,9 @@ def pre_validation_method(**kwargs):
         file_content = content_object.get()['Body'].read().decode('utf-8')
         jsonData=json.loads(file_content)
 
+        print("Landingzone : ",jsonData['ingest-'+dataset]['source']['data-location']+'/'+data_path)
+        print("Rawzone : ",jsonData['ingest-'+dataset]['destination']['data-location']+'/'+data_path)
+
         fs = s3fs.S3FileSystem()
         df_landingzone =pq.ParquetDataset(jsonData['ingest-'+dataset]['source']['data-location']+'/'+data_path, filesystem=fs).read_pandas().to_pandas()
         df_rawzone =pq.ParquetDataset(jsonData['ingest-'+dataset]['destination']['data-location']+'/'+data_path, filesystem=fs).read_pandas().to_pandas()
@@ -146,13 +150,12 @@ def pre_validation_method(**kwargs):
     except Exception as e:
         return e
 
-def post_validation_method():
+def post_validation_method(**kwargs):
     try:
+        app_config = kwargs['dag_run'].conf.get('app_config')
+        dataset = kwargs['dag_run'].conf.get('dataset')
+        data_path = kwargs['dag_run'].conf.get('data_path')
 
-        app_config = "s3://abileshlandingzone/conf/app_conf.json"
-        dataset = "Actives"
-        data_path = "2020/Feb/1/final_active_dataset.parquet"
-       
         data = app_config.split('//')[1].split('/')
         bucket = data[0]
         key =  "/".join(data[1:])
@@ -162,10 +165,12 @@ def post_validation_method():
         file_content = content_object.get()['Body'].read().decode('utf-8')
         jsonData=json.loads(file_content)
 
-   
+        print("Rawzone : ",jsonData['mask-'+dataset]['source']['data-location']+'/'+data_path+'/')
+        print("Stagingzone : ",jsonData['mask-'+dataset]['destination']['data-location']+'/'+data_path+'/')
+
         fs = s3fs.S3FileSystem()
-        df_rawzone =pq.ParquetDataset(jsonData['mask-'+dataset]['source']['data-location']+'/'+data_path, filesystem=fs).read_pandas().to_pandas()
-        df_stagingzone =pq.ParquetDataset(jsonData['mask-'+dataset]['destination']['data-location']+'/'+data_path, filesystem=fs).read_pandas().to_pandas()
+        df_rawzone =pq.ParquetDataset(jsonData['mask-'+dataset]['source']['data-location']+'/'+data_path+'/', filesystem=fs).read_pandas().to_pandas()
+        df_stagingzone =pq.ParquetDataset(jsonData['mask-'+dataset]['destination']['data-location']+'/'+data_path+'/', filesystem=fs).read_pandas().to_pandas()
 
         if(df_stagingzone.shape[0] != 0):
             for columns in df_stagingzone.columns:
@@ -205,7 +210,36 @@ def post_validation_method():
 
 
 
+def wait_for_Livy(cluster_id,batchId):
+    emr = boto3.client("emr",region_name='us-east-1')
+    emr = EmrHook(aws_conn_id='aws_default').get_conn()
+    response = emr.describe_cluster(ClusterId=cluster_id)
+    statement_status = ''
+    host = 'http://' + response['Cluster']['MasterPublicDnsName'] + ':8998'
+    #response_headers = requests.post(host + '/batches', data=json.dumps(data), headers=headers)
 
+    #session_url = host + response_headers['location'].split('/statements', 1)[0]
+    while statement_status != 'success':
+        statement_url = host + f'/batches/{batchId}/state'
+        print('statement_url: ' ,statement_url)
+
+        statement___ = requests.get(host + '/batches/', headers={'Content-Type': 'application/json'})
+        print('Statement_____: ' , statement___)
+
+        statement_response = requests.get(statement_url, headers={'Content-Type': 'application/json'})
+        print('Statement response: ' , statement_response)
+
+        statement_status = statement_response.json()['state']
+        print('Statement status: ' , statement_status)
+        
+        # lines = requests.get(session_url + '/log', headers={'Content-Type': 'application/json'}).json()['log']
+        # for line in lines:
+        #     print(line)
+        if statement_status == 'dead':
+            raise ValueError('Exception in the app caused it to be dead: ' + statement_status)
+        if 'r' in statement_response.json():
+            print('Progress: ' + str(statement_response.json()['progress']))
+        time.sleep(10)
 
 default_args = {
     'owner': 'airflow',
@@ -303,6 +337,12 @@ with DAG(
         job_flow_id="{{ task_instance.xcom_pull(task_ids='create_emr_cluster', key='return_value') }}"
         )
 
+    Livy_wait = PythonOperator(
+        task_id='Livy_wait',
+        python_callable= wait_for_Livy,
+        op_kwargs={'cluster_id':create_emr_cluster.output,'batchId':LandingToRaw.output},
+    )
+
     pre_validation = PythonOperator(
         task_id="pre_validation",
         python_callable= pre_validation_method,
@@ -334,4 +374,4 @@ with DAG(
         aws_conn_id='aws_default',
     )
 
-    read_AppConfig  >> create_emr_cluster >> t1 >> create_livy_conn >> LandingToRaw >> pre_validation >> RawToStaging >> post_validation >> cluster_remover
+    read_AppConfig  >> create_emr_cluster >> t1 >> create_livy_conn >> LandingToRaw >> Livy_wait >> pre_validation >> RawToStaging >> post_validation >> cluster_remover
